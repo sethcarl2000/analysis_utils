@@ -13,11 +13,16 @@
 namespace analysis_utils
 {
 
-template<int N> class thread_pool {
+class thread_pool {
+private: 
+    std::size_t n_threads; 
+
 public: 
 
-    thread_pool() = default; 
-
+    thread_pool(std::size_t _n_threads=0) : n_threads{_n_threads} {
+        if (n_threads < 1) n_threads = std::thread::hardware_concurrency(); 
+    }
+    
     thread_pool(const thread_pool&) = delete; 
     thread_pool& operator=(const thread_pool&) = delete; 
 
@@ -25,22 +30,10 @@ public:
     /// @tparam T type of object
     /// @param obj template to make copies of for each thread
     /// @return 'thread_local_obj' object, which gives each thread access to its own object
-    template<typename T> thread_local_obj<T,N> MakeThreadLocalObj(const T& obj) {
+    template<typename T> thread_local_obj<T> MakeThreadLocalObj(const T& obj) {
         static_assert(std::is_copy_assignable_v<T>, "Thread-local object requested is not copy-assignable"); 
-        thread_local_obj<T,N> tlocal{}; 
+        thread_local_obj<T,N> tlocal(obj, n_threads); 
         //make copies of the input object for each thread
-        for (int i=0; i<N; i++) tlocal.fObjects[i] = T(obj);
-        return tlocal; 
-    } 
-
-    /// @brief Make thread-local copies of object (with unique instructions for each thread)
-    /// @tparam T type of object to create
-    /// @param ctor function which takes thread id as arg, and returns thread-local object
-    /// @return 'thread_local_obj' object, which gives each thread access to its own object
-    template<typename T> thread_local_obj<T,N> MakeThreadLocalObj(const std::function<T(int)>& ctor) {
-        thread_local_obj<T,N> tlocal{}; 
-        //make copies of the input object for each thread
-        for (int i=0; i<N; i++) tlocal.fObjects[i] = ctor(i); 
         return tlocal; 
     } 
 
