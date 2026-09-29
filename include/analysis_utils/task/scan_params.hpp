@@ -33,19 +33,23 @@ template<typename F, typename Data> void scan_params(param_list<Data> list, F&& 
 
     std::vector<std::thread> threads; threads.reserve(cfg.n_threads); 
 
-    if (cfg.chunk_size) cfg.chunk_size = std::max<std::size_t>( 1, n_tasks / (20 * cfg.n_threads)); 
-
-    if (cfg.verbosity==1) std::cout << "\nStarting "<< n_tasks<<" tasks...\n"; 
-
-    std::mutex write_mutex; 
+    if (cfg.chunk_size < 1) cfg.chunk_size = std::max<std::size_t>( 1, n_tasks / (20 * cfg.n_threads)); 
+    
+    std::mutex write_mutex;
+    
     progress_bar pbar{cfg.progress_bar_size}; 
+    if (cfg.verbosity == 1) {
+        if (cfg.verbosity==1) std::cout << "\nStarting "<< n_tasks<<" tasks...\n"; 
+        std::cout << "\r" << pbar(0.) << std::flush; 
+    }
+
     for (size_t t=0; t<cfg.n_threads; t++) {
 
-        threads.emplace_back([&fcn, &task_id, n_tasks, cfg, t, &list, &pbar, &write_mutex]{
+        threads.emplace_back([fcn, &task_id, n_tasks, cfg, t, &list, &pbar, &write_mutex]{
 
             alignas(64) auto t_list = list; 
 
-            while (1) {
+            while (1) { 
                 step start = task_id.fetch_add(cfg.chunk_size, std::memory_order_relaxed); 
                 step end   = std::min<step>( n_tasks, start + cfg.chunk_size ); 
 
@@ -54,15 +58,21 @@ template<typename F, typename Data> void scan_params(param_list<Data> list, F&& 
 
                 t_list.set_step(start); 
 
-                while (t_list.get_step() < end) {
+                if (cfg.verbosity >= 2) {
+                    write_mutex.lock(); 
+                    std::cout << "thread " << t << " executing task range [" << start << "," << end << "]\n" << std::flush; 
+                    write_mutex.unlock(); 
+                } 
 
+                do {
                     fcn(&t_list.get(), t);
                     ++t_list; 
-                }
+                } while (++start < end); 
                 
                 if (cfg.verbosity == 1) {
-                    std::lock_guard<std::mutex> lock(write_mutex); 
+                    write_mutex.lock(); 
                     std::cout << "\r" << pbar(((float)std::min<std::size_t>(task_id,n_tasks))/((float)n_tasks)) << std::flush; 
+                    write_mutex.unlock(); 
                 }
             }; 
         }); 

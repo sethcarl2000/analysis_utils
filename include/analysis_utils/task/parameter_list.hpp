@@ -15,8 +15,6 @@ namespace task
 template<typename TData> class param_list {
 public: 
 
-
-
     struct param_t {
         double TData::*field{nullptr}; 
         double min, max, dx; 
@@ -32,13 +30,14 @@ private:
     std::vector<param_t> fParams{}; 
 
     std::vector<step> fParam_indices{};
-    std::vector<step> fParam_step_sizes{}; 
+    std::vector<step> fParam_step_sizes{1}; 
 
     void compute_param_step_sizes() {
         step st=1; 
+        fParam_step_sizes[0] = st; 
         for (std::size_t i=0; i<Size(); i++) { 
             st *= fParams[i].n_steps; 
-            fParam_step_sizes[i] = st;
+            fParam_step_sizes[i+1] = st;
         }  
     }
 
@@ -71,28 +70,35 @@ private:
         //    step = 1 % 1 (step=0);  
         //    --rank (0 -> -1);
         //  } for: (-1 >= 0) (break);   
+        //std::cout << "step: " << fStep << " \% " << get_n_steps() << " = " << (fStep % get_n_steps()) << " indices:\n"; 
         
-        for (int rank=fParam_step_sizes.size()-1; rank>=0; rank--) {
-            fParam_indices[rank] = fStep / fParam_step_sizes[rank]; 
-            auto& par = fParams[rank]; 
-            fData.*(par.field) = par(fParam_indices[rank]); 
-            fStep = fStep % fParam_step_sizes[rank];  
+        for (int rank=Size()-1; rank>=0; rank--) {
+            const auto& par = fParams[rank]; 
+            fData.*(par.field) = par(fParam_indices[rank] = fStep / fParam_step_sizes[rank]); 
+            fStep = fStep % fParam_step_sizes[rank];
         } 
+        /*int r=0; 
+        for (const auto& ii : fParam_indices) std::cout << "    i["<<r++<<"]="<<ii;
+        //std::cout << "\n"; */ 
     }
 
     void increment_step() {
 
         ++fStep; 
-
+        /*int r=0; 
+        for (const auto& ii : fParam_indices) std::cout << "    i["<<r++<<"]="<<ii;
+        std::cout << "\n";  */ 
         //keep increasing rank, until we find an index which hasn't 'turned over' 
-        for (int rank=0; rank<Size(); rank++) {
+        for (int rank=0; rank<Size(); rank++) { 
             auto& index = fParam_indices[rank]; 
             auto &par = fParams[rank]; 
-            if ((++index) < fParams[rank].n_steps) { 
+            if ((++index) < par.n_steps) { 
+                //std::cout << "i["<<rank<<"]="<<index<<"\n";
                 fData.*(par.field) = par(index); 
                 return; 
             } else {
                 index =0;
+                //std::cout << "i["<<rank<<"]="<<index<<"    ";
                 fData.*(par.field) = par(index); 
             }
         }
@@ -124,7 +130,7 @@ public:
         }); 
         fStep =0; 
         fParam_indices.resize(Size(), 0); 
-        fParam_step_sizes.resize(Size(), 1);
+        fParam_step_sizes.resize(Size()+1, 1);
         compute_param_step_sizes();  
         compute_param_indices(); 
         return *this; 
@@ -135,7 +141,7 @@ public:
     std::size_t get_n_steps() const { return fParam_step_sizes.empty() ? 0 : fParam_step_sizes.back(); }
 
     void set_step(step new_step) { 
-        fStep = new_step % get_n_steps(); 
+        fStep=new_step; 
         compute_param_indices(); 
     }
 
