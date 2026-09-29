@@ -22,6 +22,8 @@ public:
     thread_pool(std::size_t _n_threads=0) : n_threads{_n_threads} {
         if (n_threads < 1) n_threads = std::thread::hardware_concurrency(); 
     }
+
+    void set_verbosity(int v) { fVerbosity=v; }
     
     thread_pool(const thread_pool&) = delete; 
     thread_pool& operator=(const thread_pool&) = delete; 
@@ -32,29 +34,29 @@ public:
     /// @return 'thread_local_obj' object, which gives each thread access to its own object
     template<typename T> thread_local_obj<T> MakeThreadLocalObj(const T& obj) {
         static_assert(std::is_copy_assignable_v<T>, "Thread-local object requested is not copy-assignable"); 
-        thread_local_obj<T,N> tlocal(obj, n_threads); 
+        thread_local_obj<T> tlocal(obj, n_threads); 
         //make copies of the input object for each thread
         return tlocal; 
     } 
 
-    template<typename F, typename Data> void ParallelFor(std::vector<Data>& data, const F& fcn, std::size_t chunk_size=0)
+    template<typename F, typename Data> void ParallelFor(std::vector<Data>& data, F&& fcn, std::size_t chunk_size=0)
     {
         const size_t n_tasks = data.size(); 
         if (n_tasks < 1) return; 
         //keeps track of tasks
         alignas(64) std::atomic<std::size_t> task_id{0}; 
 
-        std::array<std::thread, N> threads;
+        std::vector<std::thread> threads; threads.reserve(n_threads); 
 
-        if (chunk_size<1) chunk_size = std::max<std::size_t>( 1, n_tasks / (32 * N)); 
+        if (chunk_size<1) chunk_size = std::max<std::size_t>( 1, n_tasks / (32 * n_threads)); 
 
         if (fVerbosity==1) std::cout << "\nStarting "<< n_tasks<<" tasks...\n"; 
 
         std::mutex write_mutex; 
         progress_bar pbar{100}; 
-        for (size_t t=0; t<N; t++) {
+        for (size_t t=0; t<n_threads; t++) {
 
-            threads[t] = std::thread([&fcn, &task_id, n_tasks, chunk_size, t, &data, &pbar, &write_mutex, this]{
+            threads.emplace_back([fcn, &task_id, n_tasks, chunk_size, t, &data, &pbar, &write_mutex, this]{
 
                 while (1) {
                     std::size_t start = task_id.fetch_add(chunk_size, std::memory_order_relaxed); 
@@ -63,7 +65,12 @@ public:
                     //quit if all tasks have already been scheduled
                     if (start >= n_tasks) break;    
 
-                    for (std::size_t index=start; index<end; index++) { fcn(&data[index], t); }
+                    if (fVerbosity >= 2) {
+                        std::lock_guard<std::mutex> lock(write_mutex); 
+                        std::cout << "thread " << t << " executing task range [" << start << "," << end << "]\n" << std::flush;
+                    }
+                    //perform the loop
+                    for (; start<end; start++) { fcn(&data[start], t); }
                     
                     if (fVerbosity == 1) {
                         std::lock_guard<std::mutex> lock(write_mutex); 

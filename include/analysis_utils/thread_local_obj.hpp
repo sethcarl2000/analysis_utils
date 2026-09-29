@@ -4,6 +4,7 @@
 #include <cstddef> 
 #include <vector>
 #include <memory> 
+#include <thread> 
 
 namespace analysis_utils
 {
@@ -21,10 +22,11 @@ private:
 
     std::size_t n_threads; 
     
-public: 
+public:
 
-    thread_local_obj(const T& _cpy, std::size_t _n) : copy_source{&_cpy}, n_threads{_n} { 
-        objects = std::vector<std::unique_ptr<T>>(n_threads, nullptr); 
+    thread_local_obj(const T& _cpy, std::size_t _n=0) : copy_source{&_cpy}, n_threads{_n} { 
+        if (n_threads < 1) n_threads = std::thread::hardware_concurrency(); 
+        objects = std::vector<std::unique_ptr<T>>(n_threads); 
     }
 
     T& operator()(int i) { 
