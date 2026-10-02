@@ -4,6 +4,7 @@
 #include <cstddef> 
 #include <vector>
 #include <memory> 
+#include <mutex> 
 #include <thread> 
 
 namespace analysis_utils
@@ -14,26 +15,27 @@ class thread_pool;
 template<typename T> class thread_local_obj {
 private:        
 
+    static constexpr std::size_t cache_line_size = 64; 
+
     friend class thread_pool; 
 
-    const T* copy_source; 
-    
-    alignas(64) std::vector<std::unique_ptr<T>> objects{};
+    struct alignas(cache_line_size) Slot {
+        T obj; 
+        explicit Slot(const T& _val) : obj(_val) {}; 
+    };
+    std::vector<Slot> objects{}; 
 
     std::size_t n_threads; 
     
 public:
 
-    thread_local_obj(const T& _cpy, std::size_t _n=0) : copy_source{&_cpy}, n_threads{_n} { 
+    thread_local_obj(const T& _cpy, std::size_t _n=0) : n_threads{_n} { 
         if (n_threads < 1) n_threads = std::thread::hardware_concurrency(); 
-        objects = std::vector<std::unique_ptr<T>>(n_threads); 
+        objects.reserve(n_threads); 
+        for (std::size_t t=0; t<n_threads; t++) objects.emplace_back(_cpy); 
     }
 
-    T& operator()(int i) { 
-        auto& obj = objects[i]; 
-        if (!obj) obj = std::make_unique<T>(*copy_source); 
-        return *(obj.get());     
-    }
+    T& operator()(std::size_t i) { return objects[i].obj; }
 
     static_assert(std::is_copy_constructible_v<T>, "Template paramter 'T' is not copy-constructible"); 
 };

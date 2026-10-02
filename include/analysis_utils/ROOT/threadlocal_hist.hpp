@@ -8,9 +8,13 @@
 #include <TH2.h>
 #include <TH3.h> 
 #include <TClass.h> 
+#include <TString.h> 
 // stdlib
 #include <memory> 
 #include <vector> 
+#include <thread> 
+#include <mutex> 
+#include <string> 
 
 namespace analysis_utils
 {
@@ -27,6 +31,7 @@ private:
     Hist* fTemplate{nullptr}; 
 
     // histograms for each thread 
+
     alignas(64) std::vector<std::unique_ptr<Hist>> fHistograms; 
     
     void combine1D(TH1* src, TH1* dest) {
@@ -77,18 +82,15 @@ private:
 
 public: 
 
-    threadlocal_hist(Hist* _h=nullptr, std::size_t _n_threads=1) : fTemplate{_h} { 
-        fHistograms = std::vector<std::unique_ptr<Hist>>(_n_threads); 
+    threadlocal_hist(Hist* _h=nullptr, std::size_t n_threads=0) : fTemplate{_h} {
+        if (n_threads < 1) n_threads = std::thread::hardware_concurrency(); 
+        fHistograms.reserve(n_threads); 
+        std::string base_name{fTemplate->GetName()}; 
+        for (std::size_t t=0; t<n_threads; t++) 
+            fHistograms.emplace_back( root::unique_TObject_copy(_h, Form("%s__t%zi",base_name.c_str(),t)) ); 
     }
 
-    Hist* operator()(std::size_t i) { 
-        auto& hist = fHistograms[i]; 
-        if (!hist) {
-            hist.reset(); 
-            hist = root::unique_TObject_copy<Hist>(fTemplate); 
-        }
-        return hist.get(); 
-    }
+    Hist* operator()(std::size_t i) { return fHistograms[i].get(); }
 
     Hist* aggregate() 
     {
