@@ -16,6 +16,9 @@ struct config_t {
     /// @brief Number of 'tasks' for each thread to digest at a time. 
     std::size_t chunk_size{32}; 
 
+    /// @brief Number of times all parameters should be scanned over
+    std::size_t n_scans{1};
+
     /// @brief Verbosity. 1==print progress bar 
     int verbosity=1; 
 

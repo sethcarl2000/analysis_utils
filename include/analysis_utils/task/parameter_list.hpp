@@ -141,7 +141,7 @@ public:
     std::size_t get_n_steps() const { return fParam_step_sizes.empty() ? 0 : fParam_step_sizes.back(); }
 
     void set_step(step new_step) { 
-        fStep=new_step; 
+        fStep = new_step % get_n_steps(); 
         compute_param_indices(); 
     }
 

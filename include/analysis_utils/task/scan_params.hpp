@@ -20,8 +20,9 @@ namespace task
 
 template<typename F, typename Data> void scan_params(param_list<Data> list, F&& fcn, task::config_t cfg)
 {
+    const bool has_parameters = (list.get_n_steps() > 0); 
 
-    const step n_tasks = list.get_n_steps(); 
+    const step n_tasks = has_parameters ? list.get_n_steps() * cfg.n_scans : cfg.n_scans; 
      if (n_tasks < 1) {
         std::cerr << "in <scan_params<F,Data>: no points to scan!\n"; 
         return; 
@@ -43,12 +44,14 @@ template<typename F, typename Data> void scan_params(param_list<Data> list, F&& 
         std::cout << "\r" << pbar(0.) << std::flush; 
     }
 
+
     for (size_t t=0; t<cfg.n_threads; t++) {
 
-        threads.emplace_back([fcn, &task_id, n_tasks, cfg, t, &list, &pbar, &write_mutex]{
+        threads.emplace_back([fcn, &task_id, n_tasks, cfg, t, &list, &pbar, &write_mutex, has_parameters]{
 
             alignas(64) auto t_list = list; 
 
+            Data default_dat{}; 
             while (1) { 
                 step start = task_id.fetch_add(cfg.chunk_size, std::memory_order_relaxed); 
                 step end   = std::min<step>( n_tasks, start + cfg.chunk_size ); 
@@ -65,8 +68,12 @@ template<typename F, typename Data> void scan_params(param_list<Data> list, F&& 
                 } 
 
                 do {
-                    fcn(&t_list.get(), t);
-                    ++t_list; 
+                    if (has_parameters) {
+                        fcn(&t_list.get(), t);
+                        ++t_list; 
+                    } else {
+                        fcn(&default_dat, t);
+                    }
                 } while (++start < end); 
                 
                 if (cfg.verbosity == 1) {
