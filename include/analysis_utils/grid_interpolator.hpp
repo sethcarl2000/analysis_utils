@@ -33,6 +33,7 @@ namespace analysis_utils
 *
 *  And so forth for 3D. 
 *
+*  -Seth H (19 Oct 2026)
 */
 
 template<int N> int grid_interpolator_stride_size()
